@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LazyList toList Visualization</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #eee;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #00d9ff;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 30px;
+    }
+    .container {
+      display: flex;
+      gap: 30px;
+      max-width: 1400px;
+      margin: 0 auto;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .panel {
+      flex: 1;
+      min-width: 400px;
+      max-width: 600px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 24px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .panel h2 {
+      margin-top: 0;
+      color: #ff6b6b;
+      font-size: 1.3em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel.tail h2 {
+      color: #4ecdc4;
+    }
+    .badge {
+      font-size: 0.6em;
+      padding: 4px 8px;
+      border-radius: 12px;
+      background: #ff6b6b33;
+      color: #ff6b6b;
+    }
+    .panel.tail .badge {
+      background: #4ecdc433;
+      color: #4ecdc4;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    button:hover {
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-step {
+      background: #4ecdc4;
+      color: #1a1a2e;
+    }
+    .btn-reset {
+      background: #ff6b6b;
+      color: white;
+    }
+    .btn-auto {
+      background: #a855f7;
+      color: white;
+    }
+    .visualization {
+      min-height: 300px;
+    }
+    .step-info {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.9em;
+      min-height: 60px;
+    }
+    .step-info .label {
+      color: #888;
+      font-size: 0.8em;
+      margin-bottom: 4px;
+    }
+    .lazylist-display, .stack-display, .acc-display, .result-display {
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: 0.8em;
+      color: #888;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .cells {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .cell {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 1.1em;
+      transition: all 0.3s;
+    }
+    .cell.lazylist {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .cell.lazylist.consumed {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    .cell.stack {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    .cell.acc {
+      background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+    }
+    .cell.result {
+      background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);
+      color: #1a1a2e;
+    }
+    .cell.empty {
+      background: rgba(255,255,255,0.1);
+      color: #666;
+      font-style: italic;
+      font-size: 0.8em;
+      width: auto;
+      padding: 0 12px;
+    }
+    .arrow {
+      color: #666;
+      font-size: 1.2em;
+    }
+    .stack-frame {
+      background: rgba(240, 147, 251, 0.1);
+      border: 1px solid rgba(240, 147, 251, 0.3);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 6px;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.85em;
+      transition: all 0.3s;
+    }
+    .stack-frame.current {
+      background: rgba(240, 147, 251, 0.2);
+      border-color: #f093fb;
+      box-shadow: 0 0 10px rgba(240, 147, 251, 0.3);
+    }
+    .stack-frame .waiting {
+      color: #f5576c;
+    }
+    .stack-frame .resolved {
+      color: #4ecdc4;
+    }
+    .phase-indicator {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8em;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .phase-descend {
+      background: #764ba233;
+      color: #a78bfa;
+    }
+    .phase-unwind {
+      background: #f5576c33;
+      color: #f5576c;
+    }
+    .phase-accumulate {
+      background: #4ecdc433;
+      color: #4ecdc4;
+    }
+    .phase-reverse {
+      background: #f7971e33;
+      color: #ffd200;
+    }
+    .phase-done {
+      background: #22c55e33;
+      color: #22c55e;
+    }
+    .code-highlight {
+      color: #ffd200;
+    }
+    .global-controls {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .global-controls label {
+      margin-right: 10px;
+    }
+    .global-controls select {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid #4ecdc4;
+      background: #1a1a2e;
+      color: #eee;
+      font-size: 1em;
+    }
+    .explanation {
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+      font-size: 0.9em;
+      line-height: 1.6;
+    }
+    .explanation strong {
+      color: #ffd200;
+    }
+    .speed-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .speed-control input {
+      width: 100px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔄 LazyList toList Visualization</h1>
+  <p class="subtitle">See how recursive vs tail-recursive implementations build a List</p>
+
+  <div class="global-controls">
+    <label for="listSize">LazyList elements:</label>
+    <select id="listSize">
+      <option value="3">3 elements [A, B, C]</option>
+      <option value="4" selected>4 elements [A, B, C, D]</option>
+      <option value="5">5 elements [A, B, C, D, E]</option>
+      <option value="6">6 elements [A, B, C, D, E, F]</option>
+    </select>
+    <button class="btn-reset" onclick="resetBoth()">Reset Both</button>
+  </div>
+
+  <div class="container">
+    <!-- Recursive Panel -->
+    <div class="panel recursive">
+      <h2>
+        toListRecursive
+        <span class="badge">⚠️ Stack Overflow Risk</span>
+      </h2>
+
+      <div class="controls">
+        <button class="btn-step" onclick="stepRecursive()" id="btn-step-rec">Step →</button>
+        <button class="btn-auto" onclick="autoRunRecursive()" id="btn-auto-rec">Auto ▶</button>
+        <button class="btn-reset" onclick="resetRecursive()">Reset</button>
+        <div class="speed-control">
+          <label>Speed:</label>
+          <input type="range" min="100" max="1500" value="700" id="speed-rec">
+        </div>
+      </div>
+
+      <div class="visualization" id="viz-recursive">
+        <div class="step-info" id="step-info-rec">
+          <div class="label">Current Operation</div>
+          <div id="current-op-rec">Click "Step" to begin...</div>
+        </div>
+
+        <div class="lazylist-display">
+          <div class="section-title">LazyList (input)</div>
+          <div class="cells" id="lazylist-rec"></div>
+        </div>
+
+        <div class="stack-display">
+          <div class="section-title">Call Stack</div>
+          <div id="stack-rec"></div>
+        </div>
+
+        <div class="result-display">
+          <div class="section-title">Result List</div>
+          <div class="cells" id="result-rec"></div>
+        </div>
+      </div>
+
+      <div class="explanation">
+        <strong>How it works:</strong> Each recursive call waits for the next call to return before it can cons (<code>::</code>) the head onto the result. The stack grows until we hit Empty, then unwinds, building the list from right to left.
+      </div>
+    </div>
+
+    <!-- Tail-Recursive Panel -->
+    <div class="panel tail">
+      <h2>
+        toList (tail-recursive)
+        <span class="badge">✓ Stack Safe</span>
+      </h2>
+
+      <div class="controls">
+        <button class="btn-step" onclick="stepTailRec()" id="btn-step-tail">Step →</button>
+        <button class="btn-auto" onclick="autoRunTailRec()" id="btn-auto-tail">Auto ▶</button>
+        <button class="btn-reset" onclick="resetTailRec()">Reset</button>
+        <div class="speed-control">
+          <label>Speed:</label>
+          <input type="range" min="100" max="1500" value="700" id="speed-tail">
+        </div>
+      </div>
+
+      <div class="visualization" id="viz-tailrec">
+        <div class="step-info" id="step-info-tail">
+          <div class="label">Current Operation</div>
+          <div id="current-op-tail">Click "Step" to begin...</div>
+        </div>
+
+        <div class="lazylist-display">
+          <div class="section-title">LazyList (input)</div>
+          <div class="cells" id="lazylist-tail"></div>
+        </div>
+
+        <div class="acc-display">
+          <div class="section-title">Accumulator (built in reverse)</div>
+          <div class="cells" id="acc-tail"></div>
+        </div>
+
+        <div class="result-display">
+          <div class="section-title">Final Result (after reverse)</div>
+          <div class="cells" id="result-tail"></div>
+        </div>
+      </div>
+
+      <div class="explanation">
+        <strong>How it works:</strong> Uses an accumulator that's updated at each step. No waiting for returns—each call is independent. Builds the list in reverse (newest first), then reverses at the end. Only uses O(1) stack space!
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Generate list data based on size
+    function generateList(size) {
+      return Array.from({length: size}, (_, i) => String.fromCharCode(65 + i));
+    }
+
+    let listData = generateList(4);
+
+    // ==================== RECURSIVE VERSION ====================
+    let recState = {
+      phase: 'init', // 'init', 'descend', 'unwind', 'done'
+      currentIndex: 0,
+      stack: [],
+      result: [],
+      autoRunning: false
+    };
+
+    function resetRecursive() {
+      recState = {
+        phase: 'init',
+        currentIndex: 0,
+        stack: [],
+        result: [],
+        autoRunning: false
+      };
+      renderRecursive();
+      document.getElementById('current-op-rec').textContent = 'Click "Step" to begin...';
+      document.getElementById('btn-step-rec').disabled = false;
+      document.getElementById('btn-auto-rec').disabled = false;
+    }
+
+    function stepRecursive() {
+      if (recState.phase === 'done') return;
+
+      if (recState.phase === 'init') {
+        recState.phase = 'descend';
+      }
+
+      if (recState.phase === 'descend') {
+        if (recState.currentIndex < listData.length) {
+          // Push onto stack and move to next
+          recState.stack.push({
+            value: listData[recState.currentIndex],
+            resolved: false
+          });
+          recState.currentIndex++;
+
+          if (recState.currentIndex < listData.length) {
+            document.getElementById('current-op-rec').innerHTML =
+              `<span class="code-highlight">Cons(${listData[recState.currentIndex-1]}, t)</span> → call t().toListRecursive<br>` +
+              `<span style="color:#888">Waiting for recursive call to return...</span>`;
+          } else {
+            document.getElementById('current-op-rec').innerHTML =
+              `<span class="code-highlight">Cons(${listData[recState.currentIndex-1]}, t)</span> → call t().toListRecursive<br>` +
+              `<span style="color:#888">Next is Empty...</span>`;
+          }
+        } else {
+          // Hit Empty, start unwinding
+          recState.phase = 'unwind';
+          document.getElementById('current-op-rec').innerHTML =
+            `<span class="code-highlight">Empty</span> → return Nil<br>` +
+            `<span style="color:#4ecdc4">Base case reached! Now unwinding...</span>`;
+        }
+      } else if (recState.phase === 'unwind') {
+        if (recState.stack.length > 0) {
+          // Pop and resolve
+          const frame = recState.stack[recState.stack.length - 1];
+          frame.resolved = true;
+          recState.result.unshift(frame.value);
+          recState.stack.pop();
+
+          if (recState.stack.length > 0) {
+            document.getElementById('current-op-rec').innerHTML =
+              `<span class="code-highlight">${frame.value} :: [${recState.result.slice(1).join(', ')}]</span><br>` +
+              `<span style="color:#4ecdc4">Cons head onto returned list, return to caller</span>`;
+          } else {
+            document.getElementById('current-op-rec').innerHTML =
+              `<span class="code-highlight">${frame.value} :: [${recState.result.slice(1).join(', ')}]</span><br>` +
+              `<span style="color:#22c55e">Final result ready!</span>`;
+          }
+        } else {
+          recState.phase = 'done';
+          document.getElementById('current-op-rec').innerHTML =
+            `<span style="color:#22c55e">✓ Complete!</span> Result: [${recState.result.join(', ')}]`;
+          document.getElementById('btn-step-rec').disabled = true;
+        }
+      }
+
+      renderRecursive();
+    }
+
+    function renderRecursive() {
+      // Render LazyList
+      const llContainer = document.getElementById('lazylist-rec');
+      llContainer.innerHTML = listData.map((val, i) => {
+        const consumed = i < recState.currentIndex;
+        return `<div class="cell lazylist ${consumed ? 'consumed' : ''}">${val}</div>`;
+      }).join('<span class="arrow">→</span>') + '<span class="arrow">→</span><div class="cell empty">Empty</div>';
+
+      // Render Stack
+      const stackContainer = document.getElementById('stack-rec');
+      if (recState.stack.length === 0 && recState.phase === 'init') {
+        stackContainer.innerHTML = '<div class="cell empty">Empty stack</div>';
+      } else if (recState.stack.length === 0) {
+        stackContainer.innerHTML = '<div class="cell empty">Stack unwound</div>';
+      } else {
+        stackContainer.innerHTML = recState.stack.map((frame, i) => {
+          const isCurrent = i === recState.stack.length - 1;
+          const status = frame.resolved
+            ? `<span class="resolved">✓ ${frame.value} :: ...</span>`
+            : `<span class="waiting">waiting for t().toListRecursive</span>`;
+          return `<div class="stack-frame ${isCurrent ? 'current' : ''}">
+            ${frame.value} :: ${status}
+          </div>`;
+        }).reverse().join('');
+      }
+
+      // Render Result
+      const resultContainer = document.getElementById('result-rec');
+      if (recState.result.length === 0) {
+        resultContainer.innerHTML = '<div class="cell empty">Building...</div>';
+      } else {
+        resultContainer.innerHTML = recState.result.map(val =>
+          `<div class="cell result">${val}</div>`
+        ).join('<span class="arrow">::</span>') + '<span class="arrow">::</span><div class="cell empty">Nil</div>';
+      }
+    }
+
+    function autoRunRecursive() {
+      if (recState.autoRunning) {
+        recState.autoRunning = false;
+        document.getElementById('btn-auto-rec').textContent = 'Auto ▶';
+        return;
+      }
+
+      recState.autoRunning = true;
+      document.getElementById('btn-auto-rec').textContent = 'Pause ⏸';
+
+      function tick() {
+        if (!recState.autoRunning || recState.phase === 'done') {
+          recState.autoRunning = false;
+          document.getElementById('btn-auto-rec').textContent = 'Auto ▶';
+          return;
+        }
+        stepRecursive();
+        const speed = document.getElementById('speed-rec').value;
+        setTimeout(tick, speed);
+      }
+      tick();
+    }
+
+    // ==================== TAIL-RECURSIVE VERSION ====================
+    let tailState = {
+      phase: 'init', // 'init', 'accumulate', 'reverse', 'done'
+      currentIndex: 0,
+      accumulator: [],
+      result: [],
+      reverseIndex: 0,
+      autoRunning: false
+    };
+
+    function resetTailRec() {
+      tailState = {
+        phase: 'init',
+        currentIndex: 0,
+        accumulator: [],
+        result: [],
+        reverseIndex: 0,
+        autoRunning: false
+      };
+      renderTailRec();
+      document.getElementById('current-op-tail').textContent = 'Click "Step" to begin...';
+      document.getElementById('btn-step-tail').disabled = false;
+      document.getElementById('btn-auto-tail').disabled = false;
+    }
+
+    function stepTailRec() {
+      if (tailState.phase === 'done') return;
+
+      if (tailState.phase === 'init') {
+        tailState.phase = 'accumulate';
+        document.getElementById('current-op-tail').innerHTML =
+          `<span class="code-highlight">go(LazyList, Nil)</span><br>` +
+          `<span style="color:#888">Starting with empty accumulator...</span>`;
+        renderTailRec();
+        return;
+      }
+
+      if (tailState.phase === 'accumulate') {
+        if (tailState.currentIndex < listData.length) {
+          // Cons current head onto accumulator
+          const val = listData[tailState.currentIndex];
+          tailState.accumulator.unshift(val);
+          tailState.currentIndex++;
+
+          document.getElementById('current-op-tail').innerHTML =
+            `<span class="code-highlight">go(t(), ${val} :: acc)</span><br>` +
+            `<span style="color:#4ecdc4">Cons ${val} onto accumulator, tail-call with rest</span>`;
+        } else {
+          // Hit Empty, start reversing
+          tailState.phase = 'reverse';
+          document.getElementById('current-op-tail').innerHTML =
+            `<span class="code-highlight">Empty → acc.reverse</span><br>` +
+            `<span style="color:#ffd200">Accumulator complete! Now reversing...</span>`;
+        }
+      } else if (tailState.phase === 'reverse') {
+        if (tailState.reverseIndex < tailState.accumulator.length) {
+          // Move one element to result
+          const val = tailState.accumulator[tailState.accumulator.length - 1 - tailState.reverseIndex];
+          tailState.result.push(val);
+          tailState.reverseIndex++;
+
+          document.getElementById('current-op-tail').innerHTML =
+            `<span class="code-highlight">Reversing: ${val}</span><br>` +
+            `<span style="color:#ffd200">Moving element to final position</span>`;
+        } else {
+          tailState.phase = 'done';
+          document.getElementById('current-op-tail').innerHTML =
+            `<span style="color:#22c55e">✓ Complete!</span> Result: [${tailState.result.join(', ')}]`;
+          document.getElementById('btn-step-tail').disabled = true;
+        }
+      }
+
+      renderTailRec();
+    }
+
+    function renderTailRec() {
+      // Render LazyList
+      const llContainer = document.getElementById('lazylist-tail');
+      llContainer.innerHTML = listData.map((val, i) => {
+        const consumed = i < tailState.currentIndex;
+        return `<div class="cell lazylist ${consumed ? 'consumed' : ''}">${val}</div>`;
+      }).join('<span class="arrow">→</span>') + '<span class="arrow">→</span><div class="cell empty">Empty</div>';
+
+      // Render Accumulator
+      const accContainer = document.getElementById('acc-tail');
+      if (tailState.accumulator.length === 0) {
+        accContainer.innerHTML = '<div class="cell empty">Nil</div>';
+      } else {
+        const accCells = tailState.accumulator.map((val, i) => {
+          const beingReversed = tailState.phase === 'reverse' &&
+            i < tailState.accumulator.length - tailState.reverseIndex;
+          return `<div class="cell acc" style="${beingReversed ? 'opacity:0.4' : ''}">${val}</div>`;
+        });
+        accContainer.innerHTML = accCells.join('<span class="arrow">::</span>') +
+          '<span class="arrow">::</span><div class="cell empty">Nil</div>';
+      }
+
+      // Render Result
+      const resultContainer = document.getElementById('result-tail');
+      if (tailState.result.length === 0 && tailState.phase !== 'done') {
+        resultContainer.innerHTML = '<div class="cell empty">After reverse...</div>';
+      } else if (tailState.result.length === 0) {
+        resultContainer.innerHTML = '<div class="cell empty">Nil</div>';
+      } else {
+        resultContainer.innerHTML = tailState.result.map(val =>
+          `<div class="cell result">${val}</div>`
+        ).join('<span class="arrow">::</span>') + '<span class="arrow">::</span><div class="cell empty">Nil</div>';
+      }
+    }
+
+    function autoRunTailRec() {
+      if (tailState.autoRunning) {
+        tailState.autoRunning = false;
+        document.getElementById('btn-auto-tail').textContent = 'Auto ▶';
+        return;
+      }
+
+      tailState.autoRunning = true;
+      document.getElementById('btn-auto-tail').textContent = 'Pause ⏸';
+
+      function tick() {
+        if (!tailState.autoRunning || tailState.phase === 'done') {
+          tailState.autoRunning = false;
+          document.getElementById('btn-auto-tail').textContent = 'Auto ▶';
+          return;
+        }
+        stepTailRec();
+        const speed = document.getElementById('speed-tail').value;
+        setTimeout(tick, speed);
+      }
+      tick();
+    }
+
+    // ==================== GLOBAL ====================
+    function resetBoth() {
+      listData = generateList(parseInt(document.getElementById('listSize').value));
+      resetRecursive();
+      resetTailRec();
+    }
+
+    document.getElementById('listSize').addEventListener('change', resetBoth);
+
+    // Initialize
+    resetRecursive();
+    resetTailRec();
+  </script>
+</body>
+</html>

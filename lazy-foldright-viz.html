@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lazy foldRight & exists Visualization</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #eee;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #00d9ff;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 20px;
+    }
+
+    .key-insight {
+      max-width: 800px;
+      margin: 0 auto 30px;
+      background: linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(102, 126, 234, 0.1));
+      border: 1px solid rgba(78, 205, 196, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .key-insight h3 {
+      color: #4ecdc4;
+      margin: 0 0 12px 0;
+      font-size: 1em;
+    }
+    .key-insight code {
+      background: rgba(0,0,0,0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #ffd200;
+    }
+    .key-insight .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .key-insight .compare > div {
+      background: rgba(0,0,0,0.2);
+      padding: 12px;
+      border-radius: 8px;
+    }
+    .key-insight .compare h4 {
+      margin: 0 0 8px 0;
+      font-size: 0.9em;
+    }
+    .strict { color: #ff6b6b; }
+    .lazy { color: #4ecdc4; }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .panel {
+      background: rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 24px;
+      border: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 24px;
+    }
+    .panel h2 {
+      margin-top: 0;
+      color: #4ecdc4;
+      font-size: 1.3em;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    button:hover { transform: translateY(-2px); }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-step { background: #4ecdc4; color: #1a1a2e; }
+    .btn-reset { background: #ff6b6b; color: white; }
+    .btn-auto { background: #a855f7; color: white; }
+
+    .config {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .config label { color: #888; }
+    .config select, .config input {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #4ecdc4;
+      background: #1a1a2e;
+      color: #eee;
+      font-size: 1em;
+    }
+    .config input[type="number"] { width: 60px; }
+
+    .step-info {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.95em;
+      min-height: 80px;
+    }
+    .step-info .label {
+      color: #888;
+      font-size: 0.8em;
+      margin-bottom: 6px;
+    }
+
+    .section-title {
+      font-size: 0.8em;
+      color: #888;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .lazylist-viz {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .cell {
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      font-weight: bold;
+      font-size: 1.2em;
+      transition: all 0.3s;
+      position: relative;
+    }
+    .cell.element {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .cell.element.current {
+      box-shadow: 0 0 20px rgba(255, 210, 0, 0.6);
+      transform: scale(1.1);
+    }
+    .cell.element.checked {
+      opacity: 0.4;
+    }
+    .cell.element.found {
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.6);
+    }
+    .cell.element.skipped {
+      opacity: 0.2;
+      position: relative;
+    }
+    .cell.element.skipped::after {
+      content: "💤";
+      position: absolute;
+      font-size: 0.6em;
+      top: -8px;
+      right: -8px;
+    }
+    .cell.thunk {
+      background: rgba(255, 107, 107, 0.2);
+      border: 2px dashed #ff6b6b;
+      color: #ff6b6b;
+      font-size: 0.7em;
+      width: auto;
+      padding: 0 12px;
+    }
+    .cell.thunk.unevaluated {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .cell.thunk.never {
+      opacity: 0.3;
+      border-color: #666;
+      color: #666;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    .arrow {
+      color: #666;
+      font-size: 1.2em;
+    }
+
+    .expression-box {
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.9em;
+      overflow-x: auto;
+    }
+    .expression-box .label {
+      color: #888;
+      font-size: 0.8em;
+      margin-bottom: 8px;
+    }
+    .expr {
+      white-space: nowrap;
+    }
+    .expr .op { color: #ffd200; }
+    .expr .val { color: #4ecdc4; }
+    .expr .thunk { color: #ff6b6b; font-style: italic; }
+    .expr .result { color: #22c55e; font-weight: bold; }
+    .expr .highlight {
+      background: rgba(255, 210, 0, 0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .predicate-test {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .predicate-test .test {
+      font-size: 1.4em;
+      font-family: 'Fira Code', monospace;
+      margin-bottom: 8px;
+    }
+    .predicate-test .result-true {
+      color: #22c55e;
+      font-weight: bold;
+    }
+    .predicate-test .result-false {
+      color: #ff6b6b;
+    }
+    .predicate-test .consequence {
+      color: #888;
+      font-size: 0.9em;
+      margin-top: 8px;
+    }
+    .predicate-test .consequence strong {
+      color: #ffd200;
+    }
+
+    .or-gate {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      margin: 20px 0;
+      padding: 20px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+    }
+    .or-gate .input {
+      text-align: center;
+    }
+    .or-gate .input .label {
+      font-size: 0.8em;
+      color: #888;
+      margin-bottom: 4px;
+    }
+    .or-gate .input .value {
+      font-family: 'Fira Code', monospace;
+      font-size: 1.2em;
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.3);
+    }
+    .or-gate .input .value.true { color: #22c55e; }
+    .or-gate .input .value.false { color: #ff6b6b; }
+    .or-gate .input .value.thunk {
+      color: #ff6b6b;
+      border: 2px dashed #ff6b6b;
+      font-style: italic;
+    }
+    .or-gate .input .value.skipped {
+      color: #666;
+      text-decoration: line-through;
+    }
+    .or-gate .gate {
+      font-size: 1.5em;
+      color: #ffd200;
+      font-weight: bold;
+    }
+    .or-gate .output .value {
+      font-family: 'Fira Code', monospace;
+      font-size: 1.4em;
+      padding: 10px 20px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #22c55e33, #16a34a33);
+      color: #22c55e;
+    }
+
+    .result-display {
+      text-align: center;
+      padding: 20px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+    }
+    .result-display .final {
+      font-size: 1.8em;
+      font-weight: bold;
+    }
+    .result-display .final.true { color: #22c55e; }
+    .result-display .final.false { color: #ff6b6b; }
+    .result-display .stats {
+      margin-top: 12px;
+      color: #888;
+    }
+    .result-display .stats strong { color: #ffd200; }
+
+    .explanation {
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 0.9em;
+      line-height: 1.6;
+    }
+    .explanation strong { color: #ffd200; }
+    .explanation code {
+      background: rgba(0,0,0,0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🦥 Lazy foldRight & Early Termination</h1>
+  <p class="subtitle">See how <code>exists</code> stops as soon as it finds a match</p>
+
+  <div class="key-insight">
+    <h3>🔑 The Key: By-Name Parameter <code>=> B</code></h3>
+    <p>In <code>f: (A, <strong>=> B</strong>) => B</code>, the second argument is <strong>not evaluated until used</strong>.</p>
+    <div class="compare">
+      <div>
+        <h4 class="strict">Strict (Regular) Parameter</h4>
+        <code>f(a, expensiveCall())</code><br>
+        <span style="color:#888">→ expensiveCall() runs BEFORE f sees it</span>
+      </div>
+      <div>
+        <h4 class="lazy">By-Name (Lazy) Parameter</h4>
+        <code>f(a, => expensiveCall())</code><br>
+        <span style="color:#888">→ expensiveCall() only runs IF f uses it</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>exists(p: A => Boolean) via lazy foldRight</h2>
+
+      <div class="config">
+        <div>
+          <label>List:</label>
+          <select id="listChoice">
+            <option value="1,2,3,4,5">[1, 2, 3, 4, 5]</option>
+            <option value="1,2,3,4,5,6,7,8,9,10">[1..10]</option>
+            <option value="2,4,6,8,10">[2, 4, 6, 8, 10] (all even)</option>
+          </select>
+        </div>
+        <div>
+          <label>Find element:</label>
+          <input type="number" id="targetValue" value="3" min="1" max="100">
+        </div>
+        <div>
+          <label>Predicate:</label>
+          <code id="predicateDisplay">x == 3</code>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="btn-step" onclick="step()" id="btn-step">Step →</button>
+        <button class="btn-auto" onclick="autoRun()" id="btn-auto">Auto ▶</button>
+        <button class="btn-reset" onclick="reset()">Reset</button>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+          <label>Speed:</label>
+          <input type="range" min="300" max="2000" value="1000" id="speed">
+        </div>
+      </div>
+
+      <div class="step-info">
+        <div class="label">Current Operation</div>
+        <div id="current-op">Click "Step" to begin evaluating <code>exists(x => x == 3)</code></div>
+      </div>
+
+      <!-- LazyList visualization -->
+      <div class="section-title">LazyList</div>
+      <div class="lazylist-viz" id="lazylist-viz"></div>
+
+      <!-- Current fold expression -->
+      <div class="expression-box">
+        <div class="label">Expression (lazy foldRight structure)</div>
+        <div class="expr" id="expression">—</div>
+      </div>
+
+      <!-- Predicate test visualization -->
+      <div class="predicate-test" id="predicate-test" style="display: none;">
+        <div class="test" id="pred-test-expr"></div>
+        <div id="pred-test-result"></div>
+        <div class="consequence" id="pred-consequence"></div>
+      </div>
+
+      <!-- OR gate visualization -->
+      <div class="or-gate" id="or-gate" style="display: none;">
+        <div class="input">
+          <div class="label">p(a)</div>
+          <div class="value" id="or-left">?</div>
+        </div>
+        <div class="gate">||</div>
+        <div class="input">
+          <div class="label">b (rest of fold)</div>
+          <div class="value" id="or-right">?</div>
+        </div>
+        <div style="font-size: 1.5em; color: #666;">=</div>
+        <div class="output">
+          <div class="value" id="or-result">?</div>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div class="result-display" id="result-display" style="display: none;">
+        <div class="final" id="final-result"></div>
+        <div class="stats" id="stats"></div>
+      </div>
+
+      <div class="explanation">
+        <strong>The magic:</strong> <code>exists</code> uses <code>foldRight(false)((a, b) => p(a) || b)</code><br><br>
+        Since <code>||</code> short-circuits, if <code>p(a)</code> is <code>true</code>, we return <code>true</code> immediately—<br>
+        the thunk <code>b</code> (which would recurse into the rest of the list) <strong>is never evaluated</strong>!
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let listData = [1, 2, 3, 4, 5];
+    let target = 3;
+
+    let state = {
+      phase: 'init',  // 'init', 'testing', 'short-circuit', 'continue', 'done'
+      currentIndex: 0,
+      elementsChecked: 0,
+      found: false,
+      foundAt: -1,
+      autoRunning: false
+    };
+
+    function getList() {
+      return document.getElementById('listChoice').value.split(',').map(Number);
+    }
+
+    function getTarget() {
+      return parseInt(document.getElementById('targetValue').value);
+    }
+
+    function reset() {
+      listData = getList();
+      target = getTarget();
+      document.getElementById('predicateDisplay').textContent = `x == ${target}`;
+
+      state = {
+        phase: 'init',
+        currentIndex: 0,
+        elementsChecked: 0,
+        found: false,
+        foundAt: -1,
+        autoRunning: false
+      };
+
+      document.getElementById('btn-step').disabled = false;
+      document.getElementById('btn-auto').disabled = false;
+      document.getElementById('current-op').innerHTML =
+        `Click "Step" to begin evaluating <code>exists(x => x == ${target})</code>`;
+      document.getElementById('predicate-test').style.display = 'none';
+      document.getElementById('or-gate').style.display = 'none';
+      document.getElementById('result-display').style.display = 'none';
+
+      render();
+    }
+
+    function step() {
+      if (state.phase === 'done') return;
+
+      if (state.phase === 'init') {
+        state.phase = 'testing';
+        document.getElementById('current-op').innerHTML =
+          `<span style="color:#4ecdc4">Starting foldRight from the head of the list...</span><br>` +
+          `<code>f(${listData[0]}, <span style="color:#ff6b6b">=> foldRight(tail)</span>)</code>`;
+        render();
+        return;
+      }
+
+      if (state.phase === 'testing') {
+        // Test predicate on current element
+        const elem = listData[state.currentIndex];
+        const matches = elem === target;
+        state.elementsChecked++;
+
+        document.getElementById('predicate-test').style.display = 'block';
+        document.getElementById('pred-test-expr').innerHTML =
+          `p(${elem}) = (${elem} == ${target})`;
+
+        if (matches) {
+          state.found = true;
+          state.foundAt = state.currentIndex;
+          state.phase = 'short-circuit';
+
+          document.getElementById('pred-test-result').innerHTML =
+            `<span class="result-true">true</span>`;
+          document.getElementById('pred-consequence').innerHTML =
+            `<strong>true || b = true</strong> — no need to evaluate b!`;
+          document.getElementById('current-op').innerHTML =
+            `<span style="color:#22c55e">🎯 Found it! p(${elem}) is true</span><br>` +
+            `<code>true || b</code> short-circuits—<strong>b is never evaluated!</strong>`;
+        } else {
+          state.phase = 'continue';
+
+          document.getElementById('pred-test-result').innerHTML =
+            `<span class="result-false">false</span>`;
+          document.getElementById('pred-consequence').innerHTML =
+            `<strong>false || b = b</strong> — must evaluate b to get result`;
+          document.getElementById('current-op').innerHTML =
+            `<span style="color:#ff6b6b">p(${elem}) is false</span><br>` +
+            `<code>false || b</code> must evaluate b—forcing the thunk...`;
+        }
+
+        // Show OR gate
+        document.getElementById('or-gate').style.display = 'flex';
+        document.getElementById('or-left').textContent = matches ? 'true' : 'false';
+        document.getElementById('or-left').className = 'value ' + (matches ? 'true' : 'false');
+        document.getElementById('or-right').textContent = matches ? '⟨skipped⟩' : '⟨evaluating...⟩';
+        document.getElementById('or-right').className = 'value ' + (matches ? 'skipped' : 'thunk');
+        document.getElementById('or-result').textContent = matches ? 'true' : '?';
+
+        render();
+        return;
+      }
+
+      if (state.phase === 'short-circuit') {
+        // Done! Short-circuited
+        state.phase = 'done';
+        showResult();
+        render();
+        return;
+      }
+
+      if (state.phase === 'continue') {
+        state.currentIndex++;
+
+        if (state.currentIndex >= listData.length) {
+          // Exhausted list, no match
+          state.phase = 'done';
+          document.getElementById('current-op').innerHTML =
+            `<span style="color:#ff6b6b">Reached Empty — base case returns false</span>`;
+          document.getElementById('or-right').textContent = 'false';
+          document.getElementById('or-right').className = 'value false';
+          document.getElementById('or-result').textContent = 'false';
+          showResult();
+        } else {
+          state.phase = 'testing';
+          const nextElem = listData[state.currentIndex];
+          document.getElementById('current-op').innerHTML =
+            `<span style="color:#4ecdc4">Evaluating thunk → recurse to next element</span><br>` +
+            `<code>f(${nextElem}, <span style="color:#ff6b6b">=> foldRight(tail)</span>)</code>`;
+          document.getElementById('predicate-test').style.display = 'none';
+          document.getElementById('or-gate').style.display = 'none';
+        }
+
+        render();
+        return;
+      }
+    }
+
+    function showResult() {
+      document.getElementById('result-display').style.display = 'block';
+      const resultEl = document.getElementById('final-result');
+
+      if (state.found) {
+        resultEl.textContent = 'true';
+        resultEl.className = 'final true';
+        document.getElementById('stats').innerHTML =
+          `Found at index ${state.foundAt}! Only checked <strong>${state.elementsChecked}</strong> of ${listData.length} elements.<br>` +
+          `<strong>${listData.length - state.elementsChecked}</strong> elements were never evaluated! 🦥`;
+      } else {
+        resultEl.textContent = 'false';
+        resultEl.className = 'final false';
+        document.getElementById('stats').innerHTML =
+          `No match found. Checked all <strong>${state.elementsChecked}</strong> elements.`;
+      }
+
+      document.getElementById('btn-step').disabled = true;
+      document.getElementById('current-op').innerHTML =
+        `<span style="color:#22c55e">✓ Complete!</span> exists returned <strong>${state.found}</strong>`;
+    }
+
+    function render() {
+      // Render LazyList
+      const container = document.getElementById('lazylist-viz');
+      let html = '';
+
+      for (let i = 0; i < listData.length; i++) {
+        const elem = listData[i];
+        let cellClass = 'cell element';
+
+        if (i < state.currentIndex) {
+          cellClass += ' checked';
+        } else if (i === state.currentIndex && state.phase !== 'init') {
+          if (state.found && i === state.foundAt) {
+            cellClass += ' found';
+          } else {
+            cellClass += ' current';
+          }
+        } else if (i > state.currentIndex && state.found) {
+          cellClass += ' skipped';
+        }
+
+        html += `<div class="${cellClass}">${elem}</div>`;
+
+        if (i < listData.length - 1) {
+          // Show thunk between elements
+          if (i >= state.currentIndex && !state.found && state.phase !== 'init') {
+            html += `<span class="arrow">→</span>`;
+            if (i === state.currentIndex - 1 || (i === state.currentIndex && state.phase === 'continue')) {
+              html += `<div class="cell thunk unevaluated">thunk</div>`;
+            }
+            html += `<span class="arrow">→</span>`;
+          } else if (state.found && i >= state.foundAt) {
+            html += `<span class="arrow" style="opacity:0.3">→</span>`;
+            html += `<div class="cell thunk never">never called</div>`;
+            html += `<span class="arrow" style="opacity:0.3">→</span>`;
+          } else {
+            html += `<span class="arrow">→</span>`;
+          }
+        }
+      }
+
+      html += `<span class="arrow">→</span><div class="cell thunk" style="background: rgba(102,126,234,0.2); border-color: #667eea; color: #667eea;">Empty</div>`;
+
+      container.innerHTML = html;
+
+      // Render expression
+      renderExpression();
+    }
+
+    function renderExpression() {
+      const exprEl = document.getElementById('expression');
+
+      if (state.phase === 'init') {
+        exprEl.innerHTML = `<span class="op">foldRight</span>([${listData.join(', ')}], <span class="val">false</span>, (a,b) => p(a) || b)`;
+        return;
+      }
+
+      // Build nested expression showing what's evaluated vs thunks
+      let expr = '<span class="val">false</span>';
+
+      for (let i = listData.length - 1; i >= 0; i--) {
+        const elem = listData[i];
+
+        if (i > state.currentIndex || (i === state.currentIndex && state.phase === 'testing' && !state.found)) {
+          // Not yet reached - show as thunk
+          if (state.found) {
+            expr = `<span class="thunk">⟨never evaluated⟩</span>`;
+          } else {
+            expr = `<span class="thunk">⟨thunk: p(${elem}) || ${expr}⟩</span>`;
+          }
+        } else if (i === state.currentIndex) {
+          // Current position
+          if (state.found) {
+            expr = `<span class="highlight">p(${elem})</span> <span class="op">||</span> <span class="thunk">⟨skipped!⟩</span>`;
+          } else {
+            expr = `<span class="highlight">p(${elem})</span> <span class="op">||</span> (${expr})`;
+          }
+        } else {
+          // Already checked - was false
+          expr = `<span style="opacity:0.5">p(${elem})</span> <span class="op">||</span> (${expr})`;
+        }
+      }
+
+      if (state.phase === 'done') {
+        expr = `<span class="result">${state.found}</span> <span style="color:#888">← ${state.found ? 'short-circuited!' : 'checked all'}</span>`;
+      }
+
+      exprEl.innerHTML = expr;
+    }
+
+    function autoRun() {
+      if (state.autoRunning) {
+        state.autoRunning = false;
+        document.getElementById('btn-auto').textContent = 'Auto ▶';
+        return;
+      }
+
+      state.autoRunning = true;
+      document.getElementById('btn-auto').textContent = 'Pause ⏸';
+
+      function tick() {
+        if (!state.autoRunning || state.phase === 'done') {
+          state.autoRunning = false;
+          document.getElementById('btn-auto').textContent = 'Auto ▶';
+          return;
+        }
+        step();
+        setTimeout(tick, document.getElementById('speed').value);
+      }
+      tick();
+    }
+
+    // Event listeners
+    document.getElementById('listChoice').addEventListener('change', reset);
+    document.getElementById('targetValue').addEventListener('change', reset);
+
+    // Initialize
+    reset();
+  </script>
+</body>
+</html>
