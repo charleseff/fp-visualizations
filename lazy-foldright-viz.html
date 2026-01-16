@@ -349,6 +349,68 @@
       padding: 2px 6px;
       border-radius: 4px;
     }
+
+    .call-stack {
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .call-stack .section-title {
+      margin-bottom: 12px;
+    }
+    .stack-frames {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stack-frame {
+      background: rgba(240, 147, 251, 0.1);
+      border: 1px solid rgba(240, 147, 251, 0.3);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.8em;
+      transition: all 0.3s;
+    }
+    .stack-frame.active {
+      background: rgba(240, 147, 251, 0.2);
+      border-color: #f093fb;
+      box-shadow: 0 0 10px rgba(240, 147, 251, 0.3);
+    }
+    .stack-frame.returning {
+      background: rgba(78, 205, 196, 0.2);
+      border-color: #4ecdc4;
+    }
+    .stack-frame .waiting { color: #ff6b6b; }
+    .stack-frame .resolved { color: #4ecdc4; }
+    .stack-empty {
+      color: #666;
+      font-style: italic;
+      padding: 8px;
+    }
+
+    .scenario-buttons {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .scenario-btn {
+      padding: 6px 12px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      color: #eee;
+      font-size: 0.85em;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .scenario-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    .scenario-btn.early-exit { border-color: #22c55e; color: #22c55e; }
+    .scenario-btn.no-match { border-color: #ff6b6b; color: #ff6b6b; }
   </style>
 </head>
 <body>
@@ -375,6 +437,13 @@
   <div class="container">
     <div class="panel">
       <h2>exists(p: A => Boolean) via lazy foldRight</h2>
+
+      <div class="scenario-buttons">
+        <span style="color:#888; margin-right: 8px;">Try:</span>
+        <button class="scenario-btn early-exit" onclick="setScenario('early')">🎯 Early exit (find 2)</button>
+        <button class="scenario-btn no-match" onclick="setScenario('nomatch')">🔍 No match (find 99)</button>
+        <button class="scenario-btn" onclick="setScenario('last')">📍 Last element (find 5)</button>
+      </div>
 
       <div class="config">
         <div>
@@ -427,6 +496,14 @@
         <div class="consequence" id="pred-consequence"></div>
       </div>
 
+      <!-- Call stack visualization -->
+      <div class="call-stack" id="call-stack-section">
+        <div class="section-title">Call Stack (grows when no short-circuit)</div>
+        <div class="stack-frames" id="stack-frames">
+          <div class="stack-empty">Stack empty</div>
+        </div>
+      </div>
+
       <!-- OR gate visualization -->
       <div class="or-gate" id="or-gate" style="display: none;">
         <div class="input">
@@ -463,13 +540,27 @@
     let target = 3;
 
     let state = {
-      phase: 'init',  // 'init', 'testing', 'short-circuit', 'continue', 'done'
+      phase: 'init',  // 'init', 'testing', 'short-circuit', 'continue', 'unwinding', 'done'
       currentIndex: 0,
       elementsChecked: 0,
       found: false,
       foundAt: -1,
-      autoRunning: false
+      autoRunning: false,
+      callStack: [],  // Track call stack frames
+      unwindIndex: 0  // For unwinding phase
     };
+
+    function setScenario(scenario) {
+      document.getElementById('listChoice').value = '1,2,3,4,5';
+      if (scenario === 'early') {
+        document.getElementById('targetValue').value = '2';
+      } else if (scenario === 'nomatch') {
+        document.getElementById('targetValue').value = '99';
+      } else if (scenario === 'last') {
+        document.getElementById('targetValue').value = '5';
+      }
+      reset();
+    }
 
     function getList() {
       return document.getElementById('listChoice').value.split(',').map(Number);
@@ -490,7 +581,9 @@
         elementsChecked: 0,
         found: false,
         foundAt: -1,
-        autoRunning: false
+        autoRunning: false,
+        callStack: [],
+        unwindIndex: 0
       };
 
       document.getElementById('btn-step').disabled = false;
@@ -502,6 +595,7 @@
       document.getElementById('result-display').style.display = 'none';
 
       render();
+      renderCallStack();
     }
 
     function step() {
@@ -509,10 +603,13 @@
 
       if (state.phase === 'init') {
         state.phase = 'testing';
+        // Push first stack frame
+        state.callStack.push({ elem: listData[0], status: 'active', result: null });
         document.getElementById('current-op').innerHTML =
           `<span style="color:#4ecdc4">Starting foldRight from the head of the list...</span><br>` +
           `<code>f(${listData[0]}, <span style="color:#ff6b6b">=> foldRight(tail)</span>)</code>`;
         render();
+        renderCallStack();
         return;
       }
 
@@ -530,6 +627,11 @@
           state.found = true;
           state.foundAt = state.currentIndex;
           state.phase = 'short-circuit';
+          // Mark current frame as returning true
+          if (state.callStack.length > 0) {
+            state.callStack[state.callStack.length - 1].status = 'returning';
+            state.callStack[state.callStack.length - 1].result = true;
+          }
 
           document.getElementById('pred-test-result').innerHTML =
             `<span class="result-true">true</span>`;
@@ -540,6 +642,10 @@
             `<code>true || b</code> short-circuits—<strong>b is never evaluated!</strong>`;
         } else {
           state.phase = 'continue';
+          // Mark current frame as waiting
+          if (state.callStack.length > 0) {
+            state.callStack[state.callStack.length - 1].status = 'waiting';
+          }
 
           document.getElementById('pred-test-result').innerHTML =
             `<span class="result-false">false</span>`;
@@ -559,14 +665,16 @@
         document.getElementById('or-result').textContent = matches ? 'true' : '?';
 
         render();
+        renderCallStack();
         return;
       }
 
       if (state.phase === 'short-circuit') {
-        // Done! Short-circuited
+        // Done! Short-circuited - no unwinding needed, just pop all frames
         state.phase = 'done';
         showResult();
         render();
+        renderCallStack();
         return;
       }
 
@@ -574,17 +682,25 @@
         state.currentIndex++;
 
         if (state.currentIndex >= listData.length) {
-          // Exhausted list, no match
-          state.phase = 'done';
+          // Exhausted list, start unwinding
+          state.phase = 'unwinding';
+          state.unwindIndex = state.callStack.length - 1;
           document.getElementById('current-op').innerHTML =
-            `<span style="color:#ff6b6b">Reached Empty — base case returns false</span>`;
+            `<span style="color:#ff6b6b">Reached Empty — base case returns false</span><br>` +
+            `<span style="color:#888">Now unwinding the stack...</span>`;
           document.getElementById('or-right').textContent = 'false';
           document.getElementById('or-right').className = 'value false';
           document.getElementById('or-result').textContent = 'false';
-          showResult();
+          // Mark the last frame as returning
+          if (state.callStack.length > 0) {
+            state.callStack[state.callStack.length - 1].status = 'returning';
+            state.callStack[state.callStack.length - 1].result = false;
+          }
         } else {
           state.phase = 'testing';
           const nextElem = listData[state.currentIndex];
+          // Push new stack frame
+          state.callStack.push({ elem: nextElem, status: 'active', result: null });
           document.getElementById('current-op').innerHTML =
             `<span style="color:#4ecdc4">Evaluating thunk → recurse to next element</span><br>` +
             `<code>f(${nextElem}, <span style="color:#ff6b6b">=> foldRight(tail)</span>)</code>`;
@@ -593,8 +709,63 @@
         }
 
         render();
+        renderCallStack();
         return;
       }
+
+      if (state.phase === 'unwinding') {
+        // Pop a frame and continue unwinding
+        state.callStack.pop();
+        state.unwindIndex--;
+
+        if (state.unwindIndex >= 0) {
+          // More frames to unwind
+          state.callStack[state.unwindIndex].status = 'returning';
+          state.callStack[state.unwindIndex].result = false;
+          const frame = state.callStack[state.unwindIndex];
+          document.getElementById('current-op').innerHTML =
+            `<span style="color:#4ecdc4">Unwinding: false || false = false</span><br>` +
+            `<span style="color:#888">Return false to caller (frame for ${frame.elem})</span>`;
+        } else {
+          // Done unwinding
+          state.phase = 'done';
+          document.getElementById('current-op').innerHTML =
+            `<span style="color:#22c55e">✓ Complete!</span> All frames unwound, exists returned <strong>false</strong>`;
+          showResult();
+        }
+
+        render();
+        renderCallStack();
+        return;
+      }
+    }
+
+    function renderCallStack() {
+      const container = document.getElementById('stack-frames');
+
+      if (state.callStack.length === 0) {
+        container.innerHTML = '<div class="stack-empty">Stack empty</div>';
+        return;
+      }
+
+      // Render frames from bottom to top (most recent at top)
+      const framesHtml = state.callStack.slice().reverse().map((frame, i) => {
+        const isTop = i === 0;
+        let statusHtml = '';
+        if (frame.status === 'active') {
+          statusHtml = '<span class="waiting">evaluating p(' + frame.elem + ')...</span>';
+        } else if (frame.status === 'waiting') {
+          statusHtml = '<span class="waiting">waiting for thunk...</span>';
+        } else if (frame.status === 'returning') {
+          statusHtml = '<span class="resolved">returning ' + frame.result + '</span>';
+        }
+
+        return `<div class="stack-frame ${frame.status === 'active' ? 'active' : ''} ${frame.status === 'returning' ? 'returning' : ''}">
+          p(${frame.elem}) || b → ${statusHtml}
+        </div>`;
+      }).join('');
+
+      container.innerHTML = framesHtml;
     }
 
     function showResult() {
@@ -611,7 +782,9 @@
         resultEl.textContent = 'false';
         resultEl.className = 'final false';
         document.getElementById('stats').innerHTML =
-          `No match found. Checked all <strong>${state.elementsChecked}</strong> elements.`;
+          `No match found. Checked all <strong>${state.elementsChecked}</strong> elements.<br>` +
+          `<span style="color:#ff6b6b">Stack grew to ${state.elementsChecked} frames, then unwound.</span><br>` +
+          `<span style="color:#888">No short-circuit benefit here—worst case behavior.</span>`;
       }
 
       document.getElementById('btn-step').disabled = true;
